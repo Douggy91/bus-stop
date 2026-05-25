@@ -579,7 +579,8 @@ body {
 
 /* Arrival cards container */
 .arrival-board {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px;
   display: flex;
@@ -589,6 +590,7 @@ body {
 
 /* Arrival Cards — 세로 2행 레이아웃 (겹침 방지) */
 .arrival-card {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
