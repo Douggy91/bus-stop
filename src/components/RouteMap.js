@@ -34,6 +34,115 @@ export class RouteMap {
     this.activeStationId = activeStationId;
     this.onSelectStation = onSelectStation;
     this.svgBuilt        = false;
+    this.state           = null;
+    this.setupTooltip();
+  }
+
+  setupTooltip() {
+    // 다크 글래스모피즘 테마의 툴팁 요소 동적 바인딩
+    this.tooltip = document.getElementById('map-tooltip');
+    if (!this.tooltip) {
+      this.tooltip = document.createElement('div');
+      this.tooltip.id = 'map-tooltip';
+      this.tooltip.style.cssText = `
+        position: fixed;
+        z-index: 10000;
+        pointer-events: none;
+        opacity: 0;
+        transform: scale(0.95) translateY(6px);
+        transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+        background: rgba(13, 20, 35, 0.9);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        padding: 10px 14px;
+        color: #f3f4f6;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(236, 72, 153, 0.15);
+        font-size: 11.5px;
+        font-family: 'Inter', sans-serif;
+        line-height: 1.5;
+        min-width: 160px;
+      `;
+      document.body.appendChild(this.tooltip);
+    }
+  }
+
+  showTooltip(stationId, event) {
+    if (!this.state) return;
+    const { boardingRequests, arrivals } = this.state;
+    const station = STATIONS.find(s => s.id === stationId);
+    if (!station) return;
+
+    const reqs = (boardingRequests || []).filter(r => r.startsWith(stationId + ':'));
+    if (reqs.length === 0) return; // 예약된 건이 없으면 툴팁을 띄우지 않음
+
+    let tooltipContent = '';
+
+    // 현재 선택된 정류장인 경우 -> 상세 버스 실시간 도착 정보 제공
+    if (this.activeStationId === stationId && arrivals && arrivals.length > 0) {
+      const reservedArrivals = arrivals.filter(a => {
+        const key = `${stationId}:${a.routeId}`;
+        return reqs.includes(key);
+      });
+
+      if (reservedArrivals.length > 0) {
+        tooltipContent = `
+          <div style="font-weight:800; color:var(--color-bell); display:flex; align-items:center; gap:5px; margin-bottom:5px;">
+            <span style="font-size:13px;">🔔</span> 승차 예약 노선 정보
+          </div>
+          <div style="font-weight:700; font-size:12.5px; color:#fff; margin-bottom:4px;">${station.name}</div>
+          <div style="border-top:1px solid rgba(255,255,255,0.08); margin: 6px 0;"></div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            ${reservedArrivals.map(a => {
+              const mins = a.predictTime;
+              const timeStr = mins === 0 ? '곧 도착 진입' : `${mins}분전`;
+              const stopsStr = `${a.locationNo}전`;
+              return `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+                  <span style="background:${a.color}22; color:${a.color}; border:1px solid ${a.color}44; font-weight:800; font-size:10px; padding:2px 6px; border-radius:6px;">
+                    ${a.routeName}번
+                  </span>
+                  <span style="font-weight:600; color:#fff;">
+                    ${timeStr} <span style="font-size:9.5px; color:var(--text-muted); font-weight:normal;">(${stopsStr})</span>
+                  </span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }
+    }
+
+    // 선택되지 않은 정류장이거나 상세 정보가 없는 경우 -> 예약 여부만 노출
+    if (!tooltipContent) {
+      tooltipContent = `
+        <div style="font-weight:800; color:var(--color-bell); display:flex; align-items:center; gap:5px; margin-bottom:4px;">
+          <span style="font-size:13px;">🔔</span> 승차 예약 활성
+        </div>
+        <div style="font-weight:700; font-size:12.5px; color:#fff; margin-bottom:4px;">${station.name}</div>
+        <div style="border-top:1px solid rgba(255,255,255,0.08); margin: 5px 0;"></div>
+        <div style="font-size:10.5px; color:var(--text-secondary);">해당 정류장에 탑승 예약한 노선이 있습니다.</div>
+      `;
+    }
+
+    this.tooltip.innerHTML = tooltipContent;
+    this.tooltip.style.opacity = '1';
+    this.tooltip.style.transform = 'scale(1) translateY(0)';
+    this.moveTooltip(event);
+  }
+
+  moveTooltip(event) {
+    if (!this.tooltip) return;
+    const offset = 14;
+    this.tooltip.style.left = `${event.clientX + offset}px`;
+    this.tooltip.style.top = `${event.clientY + offset}px`;
+  }
+
+  hideTooltip() {
+    if (!this.tooltip) return;
+    this.tooltip.style.opacity = '0';
+    this.tooltip.style.transform = 'scale(0.95) translateY(6px)';
   }
 
   setActiveStation(stationId) {
@@ -154,6 +263,7 @@ export class RouteMap {
 
   render(state) {
     if (!state) return;
+    this.state = state;
     const { activeStationId, favorites, boardingRequests, arrivals } = state;
 
     this.setActiveStation(activeStationId);
@@ -196,11 +306,25 @@ export class RouteMap {
       if (this.stationsLayer) {
         this.stationsLayer.innerHTML = this.renderStationNodes(arrivals, boardingRequests);
 
-        // 정류장 클릭 이벤트 바인딩
+        // 정류장 클릭 및 마우스 호버 이벤트 바인딩
         this.container.querySelectorAll('.station-node-group').forEach(g => {
+          const stationId = g.dataset.id;
+
           g.addEventListener('click', e => {
             const id = g.dataset.id || e.currentTarget.dataset.id;
             if (id) this.onSelectStation(id);
+          });
+
+          g.addEventListener('mouseenter', e => {
+            if (stationId) this.showTooltip(stationId, e);
+          });
+
+          g.addEventListener('mousemove', e => {
+            this.moveTooltip(e);
+          });
+
+          g.addEventListener('mouseleave', () => {
+            this.hideTooltip();
           });
         });
       }
