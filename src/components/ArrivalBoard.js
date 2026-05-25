@@ -65,6 +65,26 @@ export class ArrivalBoard {
     const { stations, activeStationId, favorites, arrivals, isLoading, error, boardingRequests, apiKeySet } = state;
     this.setActiveStation(activeStationId);
 
+    // ── 동일 노선 중 가장 가까운 노선만 필터링 ────────────────
+    let filteredArrivals = [];
+    if (arrivals && arrivals.length > 0) {
+      const map = new Map();
+      arrivals.forEach(arrival => {
+        const key = arrival.routeId || arrival.routeName;
+        if (!map.has(key)) {
+          map.set(key, arrival);
+        } else {
+          const existing = map.get(key);
+          if (arrival.predictTime < existing.predictTime) {
+            map.set(key, arrival);
+          }
+        }
+      });
+      filteredArrivals = Array.from(map.values());
+      // 도착 예정 시간 순서대로 정렬하여 가독성 증대
+      filteredArrivals.sort((a, b) => a.predictTime - b.predictTime);
+    }
+
     // ── 헤더 업데이트 ───────────────────────────────────────
     const station = stations.find(s => s.id === activeStationId);
     const nameEl   = document.getElementById('active-station-name');
@@ -124,7 +144,7 @@ export class ArrivalBoard {
     }
 
     // ── 로딩 상태 ──────────────────────────────────────────
-    if (isLoading && (!arrivals || arrivals.length === 0)) {
+    if (isLoading && filteredArrivals.length === 0) {
       this.container.innerHTML = `
         <div class="no-arrivals">
           <div class="loading-spinner"></div>
@@ -135,7 +155,7 @@ export class ArrivalBoard {
     }
 
     // ── 오류 상태 ──────────────────────────────────────────
-    if (error && (!arrivals || arrivals.length === 0)) {
+    if (error && filteredArrivals.length === 0) {
       this.container.innerHTML = `
         <div class="no-arrivals">
           <i data-lucide="wifi-off" style="width:40px; height:40px; color:var(--color-express);"></i>
@@ -151,7 +171,7 @@ export class ArrivalBoard {
     }
 
     // ── 도착 정보 없음 ──────────────────────────────────────
-    if (!arrivals || arrivals.length === 0) {
+    if (filteredArrivals.length === 0) {
       this.container.innerHTML = `
         <div class="no-arrivals">
           <i data-lucide="bus-front" style="width:40px; height:40px; color:var(--text-muted);"></i>
@@ -164,7 +184,7 @@ export class ArrivalBoard {
 
     // ── 도착 카드 렌더링 ────────────────────────────────────
     // 구조 변경 감지 (정류장 전환 or 노선 수 변화)
-    const arrivalKey = arrivals.map(a => `${a.routeId}-${a.busOrder}`).join(',');
+    const arrivalKey = filteredArrivals.map(a => `${a.routeId}-${a.busOrder}`).join(',');
     const forceRedraw =
       this.lastActiveStationId !== activeStationId ||
       this.lastArrivalKey !== arrivalKey ||
@@ -174,12 +194,12 @@ export class ArrivalBoard {
     if (forceRedraw) {
       this.lastActiveStationId = activeStationId;
       this.lastArrivalKey = arrivalKey;
-      this._drawFullCards(arrivals, boardingRequests, activeStationId);
+      this._drawFullCards(filteredArrivals, boardingRequests, activeStationId);
       return;
     }
 
     // ── 플리커 없는 부분 업데이트 ──────────────────────────
-    arrivals.forEach(arrival => {
+    filteredArrivals.forEach(arrival => {
       const cardId = `${arrival.routeId}-${arrival.busOrder}`;
       const card = this.container.querySelector(`[data-arrival-id="${cardId}"]`);
       if (!card) return;
@@ -220,46 +240,52 @@ export class ArrivalBoard {
         : '';
 
       const congestionLabel = this.getCongestionLabel(arrival.congestion);
+      const nextBusLabel = arrival.busOrder === 2
+        ? `<span class="tag" style="background:rgba(255,255,255,0.04); color:var(--text-muted); border:1px solid var(--border-glass);">다음버스</span>`
+        : '';
 
       const bellHtml = isReserved
         ? `<button class="bell-request-btn active" data-route-id="${arrival.routeId}">
-             <i data-lucide="bell-ring"></i> 예약 취소 🔔
+             <i data-lucide="bell-ring"></i> 예약 취소
            </button>`
         : `<button class="bell-request-btn" data-route-id="${arrival.routeId}">
              <i data-lucide="bell"></i> 승차 예약
            </button>`;
 
-      // 차량번호 마스킹 (경기 XX바 1234 → 경기 **바 1234)
-      const plateDisplay = arrival.plateNo
-        ? arrival.plateNo
-        : '번호 미제공';
+      const plateDisplay = arrival.plateNo || '번호 미제공';
 
       card.innerHTML = `
-        <!-- 노선 번호 배지 -->
-        <div class="bus-badge-container">
-          <div class="bus-badge ${arrival.type}">${arrival.routeName}</div>
-          <div class="bus-type-lbl">${arrival.typeLabel}</div>
-          ${arrival.busOrder === 2 ? '<div class="bus-type-lbl" style="color:var(--text-muted);">다음 버스</div>' : ''}
-        </div>
+        <!-- ══ 1행: 배지 + 노선명 + ETA ══ -->
+        <div class="card-row-main">
 
-        <!-- 노선 상세 -->
-        <div class="bus-route-details">
-          <div class="bus-destination">${arrival.routeName}번</div>
-          <div class="bus-meta-tags">
-            <span class="tag tag-plate">${plateDisplay}</span>
-            ${wheelchairHtml}
-            <span class="tag tag-congestion ${arrival.congestion}">${congestionLabel}</span>
+          <!-- 노선 번호 배지 -->
+          <div class="bus-badge-container">
+            <div class="bus-badge ${arrival.type}">${arrival.routeName}</div>
+            <div class="bus-type-lbl">${arrival.typeLabel}</div>
+          </div>
+
+          <!-- 노선 상세 (가운데 채우기) -->
+          <div class="bus-route-details">
+            <div class="bus-destination">${arrival.routeName}번</div>
+            <div style="font-size:11px; color:var(--text-muted);">${plateDisplay}</div>
+          </div>
+
+          <!-- ETA (우측) -->
+          <div class="bus-eta-group">
+            ${this.buildEtaHtml(arrival)}
           </div>
         </div>
 
-        <!-- ETA -->
-        <div class="bus-eta-group">
-          ${this.buildEtaHtml(arrival)}
-        </div>
-
-        <!-- 승차 예약 버튼 -->
-        <div class="bell-btn-group" data-last-state="${isReserved}">
-          ${bellHtml}
+        <!-- ══ 2행: 태그 + 예약 버튼 ══ -->
+        <div class="card-row-sub">
+          <div class="bus-meta-tags">
+            ${nextBusLabel}
+            ${wheelchairHtml}
+            <span class="tag tag-congestion ${arrival.congestion}">${congestionLabel}</span>
+          </div>
+          <div class="bell-btn-group">
+            ${bellHtml}
+          </div>
         </div>
       `;
 
