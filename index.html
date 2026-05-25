@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>실시간 버스 정보 시스템 - Live Transit Dashboard</title>
+  
+  <!-- Head Diagnostic Error Catcher -->
+  <script>
+    window.addEventListener('error', function(e) {
+      var errDiv = document.getElementById('debug-error-overlay');
+      if (!errDiv) {
+        errDiv = document.createElement('div');
+        errDiv.id = 'debug-error-overlay';
+        errDiv.style.cssText = 'position:fixed; bottom:15px; left:15px; right:15px; background:rgba(239,68,68,0.95); border:1px solid #ef4444; color:white; padding:15px 20px; border-radius:12px; z-index:999999; font-family:monospace; font-size:12px; max-height:220px; overflow-y:auto; box-shadow:0 12px 30px rgba(0,0,0,0.5); backdrop-filter:blur(8px);';
+        document.body.appendChild(errDiv);
+      }
+      errDiv.innerHTML += '<div style="margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.2); padding-bottom:5px; line-height:1.4;">' +
+        '<strong>[JS Runtime Error]</strong> ' + e.message + '<br>' +
+        '<span style="color:#fca5a5; font-size:11px;">at ' + e.filename + ' (Line ' + e.lineno + ', Col ' + e.colno + ')</span>' +
+        '</div>';
+    });
+  </script>
+  
+  <!-- Premium Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Custom Styling -->
+  <link rel="stylesheet" href="src/index.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Glass Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="pulse-dot"></div>
+        <i data-lucide="bus" class="bus-logo-icon"></i>
+        <h1>LIVE METRO<span>BUS</span></h1>
+        <span class="live-badge">LIVE SIMULATION</span>
+      </div>
+      
+      <!-- Quick Statistics widgets -->
+      <div class="header-stats" id="stat-widget-container">
+        <!-- Rendered by StatWidget.js -->
+      </div>
+      
+      <div class="system-time" id="system-time">
+        13:56:51
+      </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-grid">
+      
+      <!-- LEFT SIDEBAR: Station Selector & Favorites -->
+      <aside class="sidebar-panel glass-panel">
+        <div class="panel-header">
+          <i data-lucide="map-pin"></i>
+          <h2>정류장 선택</h2>
+        </div>
+        
+        <!-- Search station -->
+        <div class="search-box">
+          <i data-lucide="search"></i>
+          <input type="text" id="station-search" placeholder="정류장 이름 또는 ID 검색...">
+          <button id="search-clear-btn" class="search-clear-btn hidden">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <!-- Filter tabs: All, Favorites -->
+        <div class="filter-tabs">
+          <button class="tab-btn active" id="tab-all">전체</button>
+          <button class="tab-btn" id="tab-fav">즐겨찾기 <span class="fav-count" id="fav-count">0</span></button>
+        </div>
+
+        <!-- Station list scroll area -->
+        <div class="station-list" id="station-list-container">
+          <!-- Rendered by StationList.js -->
+        </div>
+      </aside>
+
+      <!-- Resizer: Left | Center -->
+      <div class="panel-resizer" id="resizer-left" role="separator" aria-label="왼쪽 패널 크기 조절"></div>
+
+      <!-- CENTER CONTENT: Map & Simulator Controls -->
+      <section class="right-panel">
+
+        <!-- TOP CENTER: Interactive SVG Route Map -->
+        <div class="map-panel glass-panel">
+          <div class="panel-header map-header">
+            <div class="title-with-subtitle">
+              <h2>실시간 노선도</h2>
+              <p id="active-route-name">선택한 정류장의 버스 실시간 이동 경로</p>
+            </div>
+            <div class="map-legend">
+              <span class="legend-item"><span class="legend-dot express"></span>광역</span>
+              <span class="legend-item"><span class="legend-dot trunk"></span>간선</span>
+              <span class="legend-item"><span class="legend-dot branch"></span>지선</span>
+            </div>
+          </div>
+
+          <div class="map-container" id="route-map-container">
+            <!-- Rendered by RouteMap.js -->
+          </div>
+        </div>
+
+        <!-- BOTTOM CENTER: Simulation Control Panel -->
+        <div class="control-panel glass-panel">
+          <div class="panel-header">
+            <i data-lucide="sliders" class="text-secondary"></i>
+            <h2>시뮬레이션 컨트롤 센터</h2>
+          </div>
+
+          <div class="controls-content" id="control-panel-container">
+            <!-- Rendered by ControlPanel.js -->
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Resizer: Center | Right -->
+      <div class="panel-resizer" id="resizer-right" role="separator" aria-label="오른쪽 패널 크기 조절"></div>
+
+      <!-- RIGHT PANEL: Arrival Board -->
+      <section class="arrival-panel glass-panel">
+        <div class="panel-header arrival-board-header">
+          <div class="header-title-group">
+            <i data-lucide="activity" class="text-accent"></i>
+            <h2 id="active-station-name">정류장을 선택하세요</h2>
+            <span class="station-id-badge" id="active-station-id">STN-000</span>
+          </div>
+          <button class="fav-toggle-btn" id="station-fav-toggle" title="즐겨찾기 추가">
+            <i data-lucide="heart" class="heart-icon"></i>
+          </button>
+        </div>
+
+        <!-- Notification Banner for emergencies/delays -->
+        <div class="alert-banner hidden" id="alert-banner">
+          <i data-lucide="alert-triangle"></i>
+          <div class="alert-content">
+            <div class="alert-title">안내</div>
+            <div class="alert-text">실시간 버스 지연이 감지되었습니다.</div>
+          </div>
+          <button class="alert-close" id="alert-close"><i data-lucide="x"></i></button>
+        </div>
+
+        <!-- Arrivals container -->
+        <div class="arrival-board" id="arrival-board-container">
+          <!-- Rendered by ArrivalBoard.js -->
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Entry Script as ES6 Module -->
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
