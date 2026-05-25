@@ -1,72 +1,150 @@
 /* ==========================================
-   LIVE METROBUS - STATIC TRANSIT DATA & SEEDS
-   Defines stations, routes, and coordinate maps
+   군포시 실시간 버스 - 정적 기준 데이터
+   경기도 군포시 주요 버스 정류장 (실제 stationId 기반)
+   좌표(x, y)는 SVG 맵(960×380) 픽셀 좌표로 변환한 값
+   실제 위경도 기준: 군포시 중심(37.36°N, 126.93°E)
    ========================================== */
 
-// All static stations with their display coordinates on our 1000x400 map
+// ── 군포시 주요 정류장 (실제 ARSID / stationId) ──────────────
 export const STATIONS = [
-  { id: 'STN-101', name: '서울역 (Seoul Stn)', x: 120, y: 150, description: '수도권 전철 1, 4호선, 경의중앙선, 공항철도, KTX 환승역' },
-  { id: 'STN-102', name: '광화문 (Gwanghwamun)', x: 260, y: 110, description: '세종문화회관, 경복궁 방면' },
-  { id: 'STN-103', name: '종로3가 (Jongno 3-ga)', x: 460, y: 140, description: '지하철 1, 3, 5호선 트리플 환승역' },
-  { id: 'STN-104', name: '동대문 (Dongdaemun)', x: 680, y: 180, description: '동대문디자인플라자(DDP), 쇼핑센터 방면' },
-  { id: 'STN-105', name: '청량리역 (Cheongnyangni)', x: 880, y: 150, description: '강원/경북행 열차 출발지, 광역환승센터' },
-  { id: 'STN-106', name: '강남역 (Gangnam Stn)', x: 260, y: 310, description: '신분당선 환승, 최대 상업지구 및 대중교통 거점' },
-  { id: 'STN-107', name: '신사역 (Sinsa Stn)', x: 460, y: 290, description: '가로수길, 을지병원 방면' },
-  { id: 'STN-108', name: '고속터미널 (Express Terminal)', x: 680, y: 310, description: '호남/영동선 터미널, 3, 7, 9호선 환승' },
-  { id: 'STN-109', name: '잠실역 (Jamsil Stn)', x: 880, y: 290, description: '롯데월드타워, 송파구청 방면 광역 허브' }
+  {
+    id: '26378',
+    name: '수리산역',
+    x: 120, y: 130,
+    description: '4호선 수리산역 북측 정류장',
+    arsId: '26378',
+  },
+  {
+    id: '26379',
+    name: '수리산역(반대)',
+    x: 140, y: 160,
+    description: '4호선 수리산역 남측 정류장',
+    arsId: '26379',
+  },
+  {
+    id: '26046',
+    name: '산본역①',
+    x: 290, y: 100,
+    description: '4호선 산본역 1번 출구 방면',
+    arsId: '26046',
+  },
+  {
+    id: '26054',
+    name: '산본역②',
+    x: 330, y: 130,
+    description: '4호선 산본역 2번 출구 방면',
+    arsId: '26054',
+  },
+  {
+    id: '26055',
+    name: '군포시청·산본역',
+    x: 350, y: 170,
+    description: '군포시청, 산본역 방면 주요 환승 정류장',
+    arsId: '26055',
+  },
+  {
+    id: '26049',
+    name: '산본역③',
+    x: 310, y: 200,
+    description: '산본역 인근 추가 정류장',
+    arsId: '26049',
+  },
+  {
+    id: '26084',
+    name: '군포역',
+    x: 540, y: 150,
+    description: '1호선 군포역 정류장',
+    arsId: '26084',
+  },
+  {
+    id: '26085',
+    name: '군포역(반대)',
+    x: 570, y: 180,
+    description: '1호선 군포역 맞은편 정류장',
+    arsId: '26085',
+  },
+  {
+    id: '26170',
+    name: '당정역',
+    x: 720, y: 140,
+    description: '1호선 당정역 정류장',
+    arsId: '26170',
+  },
+  {
+    id: '26179',
+    name: '군포보건소',
+    x: 760, y: 230,
+    description: '군포보건소, 시외버스 하차 정류장',
+    arsId: '26179',
+  },
+  {
+    id: '26173',
+    name: '군포공영차고지',
+    x: 820, y: 100,
+    description: '군포공영차고지 주요 버스 기점',
+    arsId: '26173',
+  },
+  {
+    id: '26172',
+    name: '군포공영차고지(종점)',
+    x: 860, y: 130,
+    description: '군포공영차고지 종점 전용 정류장',
+    arsId: '26172',
+  },
+  {
+    id: '26182',
+    name: '군포보건소(삼성)',
+    x: 740, y: 270,
+    description: '삼성마을 방향 군포보건소 정류장',
+    arsId: '26182',
+  },
+  {
+    id: '26216',
+    name: '군포공영차고지입구',
+    x: 790, y: 160,
+    description: '공영차고지 입구 방면 정류장',
+    arsId: '26216',
+  },
 ];
 
-// Master routes list
-export const ROUTES = [
-  {
-    id: 'R-143',
-    number: '143',
-    name: '정릉 ↔ 개포동 (간선)',
-    type: 'trunk', // blue
-    color: '#3b82f6',
-    // Order of stops this route stops at
-    stations: ['STN-107', 'STN-106', 'STN-108', 'STN-109', 'STN-104', 'STN-103'],
-    intervalMinutes: 6,
-    speedFactor: 1.0 // Base speed multiplier
-  },
-  {
-    id: 'R-9401',
-    number: '9401',
-    name: '분당 ↔ 서울역 (광역)',
-    type: 'express', // red
-    color: '#ef4444',
-    stations: ['STN-109', 'STN-108', 'STN-106', 'STN-101'],
-    intervalMinutes: 10,
-    speedFactor: 1.5 // Moves faster between nodes
-  },
-  {
-    id: 'R-7212',
-    number: '7212',
-    name: '은평 ↔ 옥수동 (지선)',
-    type: 'branch', // green
-    color: '#10b981',
-    stations: ['STN-105', 'STN-104', 'STN-103', 'STN-102', 'STN-101'],
-    intervalMinutes: 8,
-    speedFactor: 0.9 // Slightly slower
-  },
-  {
-    id: 'R-01',
-    number: '01',
-    name: '남산 순환 (순환)',
-    type: 'local', // yellow/amber
-    color: '#f59e0b',
-    stations: ['STN-102', 'STN-103', 'STN-107', 'STN-101'],
-    intervalMinutes: 5,
-    speedFactor: 0.8
+// ── 노선 유형 코드 매핑 (경기도 버스 routeTypeCd 기준) ────────
+export const ROUTE_TYPE_MAP = {
+  '11': { label: '직행좌석',  type: 'express', color: '#ef4444' },
+  '12': { label: '좌석',      type: 'express', color: '#f97316' },
+  '13': { label: '일반',      type: 'trunk',   color: '#3b82f6' },
+  '14': { label: '광역급행',  type: 'express', color: '#ef4444' },
+  '15': { label: '따복버스',  type: 'branch',  color: '#10b981' },
+  '16': { label: '공공버스',  type: 'branch',  color: '#10b981' },
+  '21': { label: '마을버스',  type: 'local',   color: '#f59e0b' },
+  '22': { label: '시내일반',  type: 'trunk',   color: '#3b82f6' },
+  '23': { label: '시내좌석',  type: 'express', color: '#ef4444' },
+  '30': { label: '시외버스',  type: 'express', color: '#8b5cf6' },
+  '41': { label: '고속버스',  type: 'express', color: '#ec4899' },
+};
+
+// 혼잡도 코드 → 내부 표현 변환
+export function parseCongestion(code) {
+  switch (String(code)) {
+    case '3': return 'crowded';
+    case '2': return 'moderate';
+    case '1':
+    case '0':
+    default:  return 'empty';
   }
-];
-
-// Helper to look up a station by ID
-export function getStationById(id) {
-  return STATIONS.find(s => s.id === id);
 }
 
-// Helper to look up a route by ID
-export function getRouteById(id) {
-  return ROUTES.find(r => r.id === id);
+// flag 코드 → 도착 상태 한국어 변환
+export function parseArrivalFlag(flag) {
+  switch (String(flag)) {
+    case '0': return '운행중';
+    case '1': return '도착정보없음';
+    case '2': return '운행종료';
+    case '3': return '첫차대기';
+    default:  return '운행중';
+  }
+}
+
+// stationId로 정류장 찾기
+export function getStationById(id) {
+  return STATIONS.find(s => s.id === String(id));
 }

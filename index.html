@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>실시간 버스 정보 시스템 - Live Transit Dashboard</title>
-  
+  <title>군포시 실시간 버스 정보 - Live Gunpo Transit</title>
+
   <!-- Head Diagnostic Error Catcher -->
   <script>
-    window.addEventListener('error', function(e) {
+    window.addEventListener('error', function (e) {
       var errDiv = document.getElementById('debug-error-overlay');
       if (!errDiv) {
         errDiv = document.createElement('div');
@@ -21,35 +22,38 @@
         '</div>';
     });
   </script>
-  
+
   <!-- Premium Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  
+
   <!-- Custom Styling -->
   <link rel="stylesheet" href="src/index.css">
 </head>
+
 <body>
   <div class="app-container">
-    
+
     <!-- Top Glass Header -->
     <header class="app-header">
       <div class="logo-area">
         <div class="pulse-dot"></div>
         <i data-lucide="bus" class="bus-logo-icon"></i>
-        <h1>LIVE METRO<span>BUS</span></h1>
-        <span class="live-badge">LIVE SIMULATION</span>
+        <h1>군포시<span>BUS</span></h1>
+        <span class="live-badge">GUNPO LIVE</span>
       </div>
-      
+
       <!-- Quick Statistics widgets -->
       <div class="header-stats" id="stat-widget-container">
         <!-- Rendered by StatWidget.js -->
       </div>
-      
+
       <div class="system-time" id="system-time">
         13:56:51
       </div>
@@ -57,14 +61,14 @@
 
     <!-- Main Dashboard Grid -->
     <main class="dashboard-grid">
-      
+
       <!-- LEFT SIDEBAR: Station Selector & Favorites -->
       <aside class="sidebar-panel glass-panel">
         <div class="panel-header">
           <i data-lucide="map-pin"></i>
           <h2>정류장 선택</h2>
         </div>
-        
+
         <!-- Search station -->
         <div class="search-box">
           <i data-lucide="search"></i>
@@ -160,7 +164,173 @@
     </main>
   </div>
 
+  <!-- ══ 디버그 로그 패널 (우하단 토글) ══ -->
+  <div id="debug-panel" style="
+    position: fixed; bottom: 15px; right: 15px; z-index: 99998;
+    width: 520px; max-height: 380px;
+    background: rgba(6,9,17,0.97); border: 1px solid rgba(59,130,246,0.35);
+    border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    backdrop-filter: blur(16px); font-family: monospace;
+    display: none; flex-direction: column; overflow: hidden;">
+    <div style="display:flex; justify-content:space-between; align-items:center;
+                padding:10px 14px; border-bottom:1px solid rgba(255,255,255,0.07);
+                background:rgba(59,130,246,0.08);">
+      <span style="font-size:12px; font-weight:700; color:#93c5fd;">🔍 GBIS 디버그 콘솔</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button id="debug-clear" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3);
+          color:#fca5a5; padding:3px 8px; border-radius:6px; cursor:pointer; font-size:10px;">지우기</button>
+        <button id="debug-raw-btn" style="background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3);
+          color:#6ee7b7; padding:3px 8px; border-radius:6px; cursor:pointer; font-size:10px;">원시 응답</button>
+        <button id="debug-close"
+          style="background:none; border:none; color:#6b7280; cursor:pointer; font-size:16px;">✕</button>
+      </div>
+    </div>
+    <div id="debug-log-body" style="flex:1; overflow-y:auto; padding:10px 14px; font-size:10.5px;
+      line-height:1.6; color:#94a3b8; display:flex; flex-direction:column; gap:4px;"></div>
+    <div id="debug-raw-view" style="flex:1; overflow:auto; padding:10px 14px; display:none;">
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <input id="debug-station-input" value="26054" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);
+          color:#f1f5f9; padding:4px 10px; border-radius:8px; font-size:11px; width:120px;" placeholder="stationId">
+        <button id="debug-fetch-raw" style="background:rgba(59,130,246,0.2); border:1px solid rgba(59,130,246,0.4);
+          color:#93c5fd; padding:4px 12px; border-radius:8px; cursor:pointer; font-size:11px;">조회</button>
+      </div>
+      <pre id="debug-raw-output" style="font-size:9.5px; color:#a5f3fc; white-space:pre-wrap;
+        word-break:break-all; margin:0;"></pre>
+    </div>
+  </div>
+
+  <!-- 디버그 패널 토글 버튼 -->
+  <button id="debug-toggle-btn" title="디버그 콘솔 열기" style="position:fixed; bottom:15px; right:15px; z-index:99999;
+    width:40px; height:40px; border-radius:50%; background:rgba(59,130,246,0.2);
+    border:1px solid rgba(59,130,246,0.4); color:#93c5fd; cursor:pointer;
+    font-size:16px; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 15px rgba(0,0,0,0.3); transition:all 0.2s ease;">🔍</button>
+
   <!-- Entry Script as ES6 Module -->
   <script type="module" src="src/app.js"></script>
+
+  <!-- 디버그 콘솔 스크립트 -->
+  <script>
+    (function () {
+      const panel = document.getElementById('debug-panel');
+      const toggleBtn = document.getElementById('debug-toggle-btn');
+      const logBody = document.getElementById('debug-log-body');
+      const rawView = document.getElementById('debug-raw-view');
+      const rawOutput = document.getElementById('debug-raw-output');
+      let logMode = true; // true=log, false=raw
+
+      // ── 로그 수집 ──────────────────────────────────────
+      const logs = [];
+      function addLog(level, msg) {
+        const now = new Date().toLocaleTimeString('ko-KR');
+        const entry = { time: now, level, msg: String(msg) };
+        logs.push(entry);
+        if (logs.length > 200) logs.shift();
+        renderLogs();
+      }
+
+      function renderLogs() {
+        if (!logMode) return;
+        logBody.innerHTML = logs.slice(-80).map(e => {
+          const color = e.level === 'error' ? '#fca5a5' :
+            e.level === 'warn' ? '#fde68a' :
+              e.level === 'info' ? '#93c5fd' : '#94a3b8';
+          return `<div style="color:${color}; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:2px;">
+          <span style="color:#475569; font-size:9.5px;">[${e.time}]</span>
+          <span style="margin-left:4px;">${e.msg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+        </div>`;
+        }).join('');
+        logBody.scrollTop = logBody.scrollHeight;
+      }
+
+      // console 가로채기
+      const _log = console.log.bind(console);
+      const _warn = console.warn.bind(console);
+      const _error = console.error.bind(console);
+
+      console.log = function (...args) {
+        _log(...args);
+        addLog('log', args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
+      };
+      console.warn = function (...args) {
+        _warn(...args);
+        addLog('warn', args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
+      };
+      console.error = function (...args) {
+        _error(...args);
+        addLog('error', args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
+      };
+
+      // fetch 가로채기 (API 호출 추적)
+      const _fetch = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url && url.includes('/api/')) {
+          addLog('info', `→ fetch: ${url}`);
+        }
+        try {
+          const res = await _fetch(input, init);
+          if (url && url.includes('/api/')) {
+            addLog(res.ok ? 'log' : 'error', `← ${res.status} ${url}`);
+          }
+          return res;
+        } catch (e) {
+          if (url && url.includes('/api/')) addLog('error', `✗ fetch 실패: ${e.message}`);
+          throw e;
+        }
+      };
+
+      // ── 패널 토글 ──────────────────────────────────────
+      toggleBtn.addEventListener('click', () => {
+        if (panel.style.display === 'none' || !panel.style.display) {
+          panel.style.display = 'flex';
+          toggleBtn.style.display = 'none';
+          renderLogs();
+        }
+      });
+
+      document.getElementById('debug-close').addEventListener('click', () => {
+        panel.style.display = 'none';
+        toggleBtn.style.display = 'flex';
+      });
+
+      document.getElementById('debug-clear').addEventListener('click', () => {
+        logs.length = 0;
+        logBody.innerHTML = '';
+        rawOutput.textContent = '';
+      });
+
+      // 로그 ↔ 원시 응답 전환
+      document.getElementById('debug-raw-btn').addEventListener('click', () => {
+        logMode = !logMode;
+        if (logMode) {
+          rawView.style.display = 'none';
+          logBody.style.display = 'flex';
+          document.getElementById('debug-raw-btn').textContent = '원시 응답';
+          renderLogs();
+        } else {
+          rawView.style.display = 'block';
+          logBody.style.display = 'none';
+          document.getElementById('debug-raw-btn').textContent = '로그 보기';
+        }
+      });
+
+      // 원시 API 응답 조회
+      document.getElementById('debug-fetch-raw').addEventListener('click', async () => {
+        const sid = document.getElementById('debug-station-input').value.trim() || '26054';
+        rawOutput.textContent = '조회 중...';
+        try {
+          const res = await _fetch(`/api/debug/arrivals?stationId=${sid}`);
+          const data = await res.json();
+          rawOutput.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          rawOutput.textContent = '오류: ' + e.message;
+        }
+      });
+
+      addLog('info', '🔍 디버그 콘솔 초기화 완료 — 우하단 🔍 버튼으로 열기');
+    })();
+  </script>
 </body>
+
 </html>

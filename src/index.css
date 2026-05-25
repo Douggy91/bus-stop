@@ -1199,3 +1199,57 @@ body {
   0% { transform: scale(1); }
   100% { transform: scale(1.18); }
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ==========================================
+   GBIS API 연동 추가 스타일
+   ========================================== */
+
+/* 로딩 스피너 */
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border-glass-glow);
+  border-top-color: var(--color-trunk);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+/* API 상태 행 */
+.api-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* API 상태 점 (온라인/오프라인) */
+.api-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.api-status-dot.online {
+  background: var(--color-branch);
+  box-shadow: 0 0 6px var(--color-branch);
+  animation: pulse-active 2s infinite;
+}
+.api-status-dot.offline {
+  background: var(--color-express);
+  box-shadow: 0 0 6px var(--color-express);
+}
+
+/* "다음 버스" 두 번째 버스 카드 스타일 */
+.arrival-card[data-arrival-id$="-2"] {
+  opacity: 0.85;
+  border-style: dashed;
+}
+.arrival-card[data-arrival-id$="-2"]:hover {
+  opacity: 1;
+  border-style: solid;
+}
+

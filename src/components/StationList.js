@@ -1,36 +1,30 @@
 /* ==========================================
-   LIVE METROBUS - STATION LIST COMPONENT
-   Handles station listing, search index filtering,
-   and favorites toggling.
+   군포시 실시간 버스 - 정류장 목록 컴포넌트
+   군포시 실제 정류장 데이터 기반 렌더링
    ========================================== */
 
-import { ROUTES } from '../services/transitData.js';
+import { STATIONS } from '../services/transitData.js';
 
 export class StationList {
   constructor(containerId, onSelectStation, onToggleFavorite) {
-    this.container = document.getElementById(containerId);
+    this.container       = document.getElementById(containerId);
     this.onSelectStation = onSelectStation;
     this.onToggleFavorite = onToggleFavorite;
-    
+
     this.searchQuery = '';
-    this.activeTab = 'all'; // 'all' or 'favorites'
-    
-    // Bind search and tab DOM events
+    this.activeTab   = 'all';
+
     this.setupEvents();
   }
 
   setupEvents() {
     const searchInput = document.getElementById('station-search');
-    const clearBtn = document.getElementById('search-clear-btn');
-    
+    const clearBtn    = document.getElementById('search-clear-btn');
+
     if (searchInput) {
-      searchInput.addEventListener('input', (e) => {
+      searchInput.addEventListener('input', e => {
         this.searchQuery = e.target.value.toLowerCase().trim();
-        if (this.searchQuery) {
-          clearBtn.classList.remove('hidden');
-        } else {
-          clearBtn.classList.add('hidden');
-        }
+        clearBtn?.classList.toggle('hidden', !this.searchQuery);
         this.render(this.lastState);
       });
     }
@@ -38,7 +32,7 @@ export class StationList {
     if (clearBtn) {
       clearBtn.addEventListener('click', () => {
         searchInput.value = '';
-        this.searchQuery = '';
+        this.searchQuery  = '';
         clearBtn.classList.add('hidden');
         this.render(this.lastState);
       });
@@ -54,7 +48,6 @@ export class StationList {
         this.activeTab = 'all';
         this.render(this.lastState);
       });
-
       tabFav.addEventListener('click', () => {
         tabFav.classList.add('active');
         tabAll.classList.remove('active');
@@ -64,78 +57,62 @@ export class StationList {
     }
   }
 
-  // Count how many bus routes stop at this station
-  getRoutesCountForStation(stationId) {
-    return ROUTES.filter(route => route.stations.includes(stationId)).length;
-  }
-
   render(state) {
     if (!state) return;
     this.lastState = state;
 
-    const { stations, activeStationId, favorites } = state;
+    const { activeStationId, favorites, arrivals } = state;
 
-    // Render Guards: Check if list structure actually changed
-    const favoritesStr = (favorites || []).join(',');
-    if (
-      this.lastRenderedQuery === this.searchQuery &&
-      this.lastRenderedTab === this.activeTab &&
-      this.lastRenderedFavorites === favoritesStr &&
-      this.container.children.length > 0
-    ) {
-      // Only activeStationId changed! Toggle class instead of rebuilding HTML
-      if (this.lastRenderedActiveId !== activeStationId) {
-        const cards = this.container.querySelectorAll('.station-card');
-        cards.forEach(card => {
-          if (card.dataset.id === activeStationId) {
-            card.classList.add('active');
-            const nameEl = card.querySelector('.station-name');
-            if (nameEl) nameEl.style.color = 'var(--color-trunk)';
-          } else {
-            card.classList.remove('active');
-            const nameEl = card.querySelector('.station-name');
-            if (nameEl) nameEl.style.color = '';
-          }
+    // 즐겨찾기 배지 업데이트
+    const favCount = document.getElementById('fav-count');
+    if (favCount) favCount.textContent = (favorites || []).length;
+
+    // 탭/검색/즐겨찾기 변화 시 렌더링 스킵 판단
+    const favsStr = (favorites || []).join(',');
+    const changed =
+      this.lastQuery !== this.searchQuery ||
+      this.lastTab   !== this.activeTab   ||
+      this.lastFavs  !== favsStr          ||
+      this.container.children.length === 0;
+
+    if (!changed) {
+      // 활성 정류장만 클래스 토글
+      if (this.lastActiveId !== activeStationId) {
+        this.container.querySelectorAll('.station-card').forEach(card => {
+          const isActive = card.dataset.id === activeStationId;
+          card.classList.toggle('active', isActive);
         });
-        this.lastRenderedActiveId = activeStationId;
+        this.lastActiveId = activeStationId;
       }
       return;
     }
 
-    this.lastRenderedQuery = this.searchQuery;
-    this.lastRenderedTab = this.activeTab;
-    this.lastRenderedFavorites = favoritesStr;
-    this.lastRenderedActiveId = activeStationId;
+    this.lastQuery    = this.searchQuery;
+    this.lastTab      = this.activeTab;
+    this.lastFavs     = favsStr;
+    this.lastActiveId = activeStationId;
 
-    // Update Favorites Badge Count
-    const favCountBadge = document.getElementById('fav-count');
-    if (favCountBadge) {
-      favCountBadge.textContent = favorites.length;
-    }
+    // ── 필터링 ──────────────────────────────────────────────
+    let list = STATIONS;
 
-    // Filter Stations
-    let filteredStations = stations;
-
-    // Filter by Tab
     if (this.activeTab === 'favorites') {
-      filteredStations = stations.filter(s => favorites.includes(s.id));
+      list = list.filter(s => (favorites || []).includes(s.id));
     }
 
-    // Filter by Search Query
     if (this.searchQuery) {
-      filteredStations = filteredStations.filter(s => 
-        s.name.toLowerCase().includes(this.searchQuery) || 
-        s.id.toLowerCase().includes(this.searchQuery)
+      list = list.filter(s =>
+        s.name.toLowerCase().includes(this.searchQuery) ||
+        s.id.toLowerCase().includes(this.searchQuery) ||
+        (s.arsId && s.arsId.includes(this.searchQuery))
       );
     }
 
-    // Clear Container
     this.container.innerHTML = '';
 
-    if (filteredStations.length === 0) {
+    if (list.length === 0) {
       this.container.innerHTML = `
         <div class="no-results">
-          <i data-lucide="search-slash" style="display:block; margin: 0 auto 10px auto; width:24px;"></i>
+          <i data-lucide="search-slash" style="display:block; margin:0 auto 10px; width:24px;"></i>
           ${this.activeTab === 'favorites' ? '즐겨찾기한 정류장이 없습니다.' : '검색 결과가 없습니다.'}
         </div>
       `;
@@ -143,11 +120,13 @@ export class StationList {
       return;
     }
 
-    // Render Cards
-    filteredStations.forEach(station => {
-      const isFavorite = favorites.includes(station.id);
+    // ── 카드 렌더링 ──────────────────────────────────────────
+    list.forEach(station => {
+      const isFav    = (favorites || []).includes(station.id);
       const isActive = station.id === activeStationId;
-      const routesCount = this.getRoutesCountForStation(station.id);
+
+      // 이 정류장의 도착 정보 수 (캐시된 것 기준)
+      const arrCount = arrivals && station.id === activeStationId ? arrivals.length : 0;
 
       const card = document.createElement('div');
       card.className = `station-card ${isActive ? 'active' : ''}`;
@@ -157,28 +136,29 @@ export class StationList {
         <div class="station-info-group">
           <div class="station-name">${station.name}</div>
           <div class="station-meta">
-            <span class="station-card-id">${station.id}</span>
-            <span class="station-bus-count">
-              <i data-lucide="bus" style="width:10px; height:10px;"></i>
-              ${routesCount}개 노선
-            </span>
+            <span class="station-card-id">ARS ${station.arsId || station.id}</span>
+            ${isActive && arrCount > 0
+              ? `<span class="station-bus-count">
+                   <i data-lucide="bus" style="width:10px;height:10px;"></i>
+                   ${arrCount}대 운행 중
+                 </span>`
+              : `<span class="station-bus-count" style="color:var(--text-muted); font-size:10px;">
+                   ${station.description ? station.description.substring(0, 14) + '...' : ''}
+                 </span>`
+            }
           </div>
         </div>
-        <button class="station-card-fav-btn ${isFavorite ? 'active' : ''}" data-id="${station.id}">
-          <i data-lucide="heart" style="width:14px; height:14px; fill: ${isFavorite ? 'currentColor' : 'none'}"></i>
+        <button class="station-card-fav-btn ${isFav ? 'active' : ''}" data-id="${station.id}" title="${isFav ? '즐겨찾기 해제' : '즐겨찾기 추가'}">
+          <i data-lucide="heart" style="width:14px;height:14px;fill:${isFav ? 'currentColor' : 'none'}"></i>
         </button>
       `;
 
-      // Select Card event
-      card.addEventListener('click', (e) => {
-        // Prevent click if clicking the heart button
+      card.addEventListener('click', e => {
         if (e.target.closest('.station-card-fav-btn')) return;
         this.onSelectStation(station.id);
       });
 
-      // Favorite toggle event
-      const favBtn = card.querySelector('.station-card-fav-btn');
-      favBtn.addEventListener('click', (e) => {
+      card.querySelector('.station-card-fav-btn').addEventListener('click', e => {
         e.stopPropagation();
         this.onToggleFavorite(station.id);
       });
@@ -186,7 +166,6 @@ export class StationList {
       this.container.appendChild(card);
     });
 
-    // Refresh lucide icons for newly appended elements
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
   }
 }

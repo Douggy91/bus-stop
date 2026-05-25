@@ -1,7 +1,6 @@
 /* ==========================================
-   LIVE METROBUS - STAT WIDGET COMPONENT
-   Visualizes high-level transit analytics and
-   boarding bell summary counts in the top header.
+   군포시 실시간 버스 - 헤더 통계 위젯
+   GBIS API 실제 데이터 기반 통계 표시
    ========================================== */
 
 export class StatWidget {
@@ -11,73 +10,76 @@ export class StatWidget {
 
   render(state) {
     if (!state) return;
-    const { buses, boardingRequests, trafficLevel } = state;
+    const { arrivals, boardingRequests, lastUpdated, apiKeySet } = state;
 
-    // Calculate dynamic stats
-    const activeBusesCount = buses.length;
-    const delayedBusesCount = buses.filter(b => b.isDelayed).length;
-    const boardingBellsCount = boardingRequests.length;
+    // 통계 계산
+    const arrivalCount  = (arrivals || []).length;
+    const bellCount     = (boardingRequests || []).length;
+    const minEta        = arrivalCount > 0
+      ? Math.min(...arrivals.map(a => a.predictTime))
+      : null;
+    const hasLowFloor   = (arrivals || []).some(a => a.isLowFloor);
 
+    const updatedStr = lastUpdated
+      ? lastUpdated.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : '—';
+
+    // 변화 없으면 스킵
     if (
-      this.lastActive === activeBusesCount &&
-      this.lastDelayed === delayedBusesCount &&
-      this.lastBells === boardingBellsCount &&
-      this.lastTraffic === trafficLevel &&
+      this.lastArrivalCount === arrivalCount &&
+      this.lastBellCount    === bellCount    &&
+      this.lastMinEta       === minEta       &&
+      this.lastUpdated      === updatedStr   &&
       this.container.children.length > 0
     ) {
       return;
     }
 
-    this.lastActive = activeBusesCount;
-    this.lastDelayed = delayedBusesCount;
-    this.lastBells = boardingBellsCount;
-    this.lastTraffic = trafficLevel;
-    
-    // Road Traffic Level localized
-    let trafficLabel = '원활';
-    let trafficClass = 'text-secondary';
-    if (trafficLevel === 'heavy') {
-      trafficLabel = '지체 서행';
-      trafficClass = 'text-accent';
-    } else if (trafficLevel === 'rush_hour') {
-      trafficLabel = '혼잡 정체';
-      trafficClass = 'text-danger';
-    }
+    this.lastArrivalCount = arrivalCount;
+    this.lastBellCount    = bellCount;
+    this.lastMinEta       = minEta;
+    this.lastUpdated      = updatedStr;
 
     this.container.innerHTML = `
-      <!-- Widget 1: Total Buses -->
+      <!-- 위젯 1: 접근 중인 버스 수 -->
       <div class="stat-widget">
         <i data-lucide="bus"></i>
         <div class="stat-info">
-          <span class="stat-value">${activeBusesCount}대</span>
-          <span class="stat-label">총 운행 중인 차량</span>
+          <span class="stat-value">${arrivalCount > 0 ? arrivalCount + '대' : '—'}</span>
+          <span class="stat-label">접근 중인 버스</span>
         </div>
       </div>
 
-      <!-- Widget 2: Active Stop Bells -->
-      <div class="stat-widget" style="${boardingBellsCount > 0 ? 'border-color: rgba(236,72,153,0.3); background: rgba(236,72,153,0.05);' : ''}">
-        <i data-lucide="bell" class="${boardingBellsCount > 0 ? 'text-danger' : ''}" style="${boardingBellsCount > 0 ? 'color:var(--color-bell) !important;' : ''}"></i>
+      <!-- 위젯 2: 최단 도착 시간 -->
+      <div class="stat-widget" style="${minEta !== null && minEta <= 3 ? 'border-color:rgba(239,68,68,0.35); background:rgba(239,68,68,0.05);' : ''}">
+        <i data-lucide="timer" style="${minEta !== null && minEta <= 3 ? 'color:var(--color-express) !important;' : ''}"></i>
         <div class="stat-info">
-          <span class="stat-value" style="${boardingBellsCount > 0 ? 'color:var(--color-bell);' : ''}">${boardingBellsCount}건</span>
+          <span class="stat-value" style="${minEta !== null && minEta <= 3 ? 'color:var(--color-express);' : ''}">
+            ${minEta !== null ? minEta + '분' : '—'}
+          </span>
+          <span class="stat-label">최단 도착 예정</span>
+        </div>
+      </div>
+
+      <!-- 위젯 3: 승차 예약 건수 -->
+      <div class="stat-widget" style="${bellCount > 0 ? 'border-color:rgba(236,72,153,0.35); background:rgba(236,72,153,0.05);' : ''}">
+        <i data-lucide="bell" style="${bellCount > 0 ? 'color:var(--color-bell) !important;' : ''}"></i>
+        <div class="stat-info">
+          <span class="stat-value" style="${bellCount > 0 ? 'color:var(--color-bell);' : ''}">
+            ${bellCount}건
+          </span>
           <span class="stat-label">승차 예약 대기</span>
         </div>
       </div>
 
-      <!-- Widget 3: Delayed buses -->
-      <div class="stat-widget">
-        <i data-lucide="alert-triangle" class="${delayedBusesCount > 0 ? 'text-danger' : ''}"></i>
+      <!-- 위젯 4: API 갱신 시각 -->
+      <div class="stat-widget" title="${apiKeySet ? 'GBIS API 연결됨' : 'API 키 미설정'}">
+        <i data-lucide="${apiKeySet ? 'wifi' : 'wifi-off'}" style="${!apiKeySet ? 'color:var(--color-express) !important;' : ''}"></i>
         <div class="stat-info">
-          <span class="stat-value ${delayedBusesCount > 0 ? 'text-danger' : ''}">${delayedBusesCount}대</span>
-          <span class="stat-label">돌발 지연/장애</span>
-        </div>
-      </div>
-
-      <!-- Widget 4: Traffic Condition -->
-      <div class="stat-widget">
-        <i data-lucide="gauge"></i>
-        <div class="stat-info">
-          <span class="stat-value ${trafficClass}">${trafficLabel}</span>
-          <span class="stat-label">전체 도로 정체도</span>
+          <span class="stat-value" style="font-size:13px; ${!apiKeySet ? 'color:var(--color-express);' : ''}">
+            ${apiKeySet ? updatedStr : '미연결'}
+          </span>
+          <span class="stat-label">${apiKeySet ? '최근 갱신 시각' : 'API 키 필요'}</span>
         </div>
       </div>
     `;

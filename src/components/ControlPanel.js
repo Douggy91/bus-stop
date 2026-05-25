@@ -1,7 +1,6 @@
 /* ==========================================
-   LIVE METROBUS - SIMULATION CONTROL PANEL
-   Enables live play/pause, time-speed scaling,
-   traffic density edits, and emergency triggers.
+   군포시 실시간 버스 - 정보 갱신 컨트롤 패널
+   폴링 주기 설정 및 수동 새로고침 기능
    ========================================== */
 
 import { transitEngine } from '../services/transitEngine.js';
@@ -13,114 +12,106 @@ export class ControlPanel {
 
   render(state) {
     if (!state) return;
-    const { isPaused, simulationSpeed, trafficLevel } = state;
+    const { pollSeconds, lastUpdated, apiKeySet, isLoading } = state;
 
+    // 최소 변화가 있을 때만 재렌더링
+    const updatedStr = lastUpdated ? lastUpdated.toLocaleTimeString('ko-KR') : null;
     if (
-      this.lastPaused === isPaused &&
-      this.lastSpeed === simulationSpeed &&
-      this.lastTraffic === trafficLevel &&
-      this.container.children.length > 0 &&
-      this.container.querySelector('.btn-pill-sm')
+      this.lastPollSeconds === pollSeconds &&
+      this.lastUpdatedStr  === updatedStr  &&
+      this.lastLoading     === isLoading   &&
+      this.container.children.length > 0
     ) {
       return;
     }
 
-    this.lastPaused = isPaused;
-    this.lastSpeed = simulationSpeed;
-    this.lastTraffic = trafficLevel;
+    this.lastPollSeconds = pollSeconds;
+    this.lastUpdatedStr  = updatedStr;
+    this.lastLoading     = isLoading;
+
+    const loadingStyle = isLoading
+      ? 'opacity:0.5; pointer-events:none;'
+      : '';
 
     this.container.innerHTML = `
-      <!-- Time Speed row -->
+      <!-- 마지막 갱신 시각 -->
       <div class="control-row">
         <div class="control-label-group">
-          <span>시뮬레이션 시간 배속</span>
-          <p> 실시간 버스 이동 속도를 증가시킵니다.</p>
+          <span>마지막 데이터 갱신</span>
+          <p>공공데이터포털 GBIS API 기준</p>
         </div>
-        <div class="btn-pill-group">
-          <button class="btn-pill-sm ${isPaused ? 'active danger' : ''}" id="sim-btn-pause">
-            <i data-lucide="${isPaused ? 'play' : 'pause'}" style="width:11px; height:11px; display:inline-block; vertical-align:middle; margin-right:3px;"></i>
-            ${isPaused ? '시작' : '일시정지'}
-          </button>
-          <button class="btn-pill-sm ${!isPaused && simulationSpeed === 1 ? 'active' : ''}" data-speed="1">1x</button>
-          <button class="btn-pill-sm ${!isPaused && simulationSpeed === 2 ? 'active' : ''}" data-speed="2">2x</button>
-          <button class="btn-pill-sm ${!isPaused && simulationSpeed === 5 ? 'active' : ''}" data-speed="5">5x</button>
-          <button class="btn-pill-sm ${!isPaused && simulationSpeed === 10 ? 'active' : ''}" data-speed="10">10x</button>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+          <span style="font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--color-branch);" id="last-updated-time">
+            ${updatedStr || '—'}
+          </span>
+          <span style="font-size:10px; color:var(--text-muted);">
+            ${lastUpdated ? '기준 시각' : '아직 미조회'}
+          </span>
         </div>
       </div>
 
-      <!-- Traffic Density row -->
+      <!-- 수동 새로고침 버튼 -->
       <div class="control-row">
         <div class="control-label-group">
-          <span>도로 교통 상황 제어</span>
-          <p> 정체 시 버스 대기시간이 증가하고 만차가 늘어납니다.</p>
+          <span>수동 새로고침</span>
+          <p>즉시 최신 도착 정보를 조회합니다.</p>
+        </div>
+        <button id="refresh-btn" class="spawner-btn btn-outline" style="${loadingStyle} width:auto; padding:8px 16px; gap:6px;" ${!apiKeySet ? 'disabled' : ''}>
+          <i data-lucide="${isLoading ? 'loader' : 'refresh-cw'}" style="${isLoading ? 'animation:spin 1s linear infinite;' : ''}"></i>
+          ${isLoading ? '조회 중...' : '새로고침'}
+        </button>
+      </div>
+
+      <!-- 자동 갱신 주기 -->
+      <div class="control-row">
+        <div class="control-label-group">
+          <span>자동 갱신 주기</span>
+          <p>정류장 선택 시 자동으로 반복 조회합니다.</p>
         </div>
         <div class="btn-pill-group">
-          <button class="btn-pill-sm ${trafficLevel === 'normal' ? 'active' : ''}" data-traffic="normal">보통</button>
-          <button class="btn-pill-sm ${trafficLevel === 'heavy' ? 'active' : ''}" data-traffic="heavy">정체</button>
-          <button class="btn-pill-sm ${trafficLevel === 'rush_hour' ? 'active' : ''}" data-traffic="rush_hour" style="${trafficLevel === 'rush_hour' ? 'background:rgba(239, 68, 68, 0.2); color:#fca5a5; border-color:rgba(239, 68, 68, 0.4);' : ''}">출퇴근</button>
+          <button class="btn-pill-sm ${pollSeconds === 15 ? 'active' : ''}" data-poll="15">15초</button>
+          <button class="btn-pill-sm ${pollSeconds === 30 ? 'active' : ''}" data-poll="30">30초</button>
+          <button class="btn-pill-sm ${pollSeconds === 60 ? 'active' : ''}" data-poll="60">1분</button>
         </div>
       </div>
 
-      <!-- Spawners & Disaster Buttons -->
-      <div class="control-row" style="flex-direction: column; align-items: stretch; gap: 8px; border-top: 1px solid var(--border-glass); padding-top: 15px;">
-        <div class="control-label-group" style="margin-bottom: 5px;">
-          <span>실시간 교통 시나리오 연출</span>
-          <p>도로 상의 갑작스러운 특수 상황을 유발하여 시스템 작동을 검증합니다.</p>
+      <!-- API 상태 표시 -->
+      <div class="control-row" style="border-top:1px solid var(--border-glass); padding-top:15px; flex-direction:column; align-items:stretch; gap:8px;">
+        <div class="control-label-group" style="margin-bottom:5px;">
+          <span>데이터 출처</span>
+          <p>공공데이터포털 경기도 버스도착정보조회서비스</p>
         </div>
-        
-        <div class="spawner-btn-group">
-          <button class="spawner-btn btn-outline" id="spawn-backup-btn">
-            <i data-lucide="plus-circle"></i>
-            임시 증차 운행
-          </button>
-          <button class="spawner-btn btn-outline-danger" id="trigger-breakdown-btn">
-            <i data-lucide="alert-triangle"></i>
-            돌발 고장 유발
-          </button>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="api-status-row">
+            <span class="api-status-dot ${apiKeySet ? 'online' : 'offline'}"></span>
+            <span style="font-size:11.5px; color:${apiKeySet ? 'var(--color-branch)' : 'var(--color-express)'};">
+              API 키 ${apiKeySet ? '정상 연결' : '미설정'}
+            </span>
+          </div>
+          <div class="api-status-row">
+            <i data-lucide="map-pin" style="width:12px;height:12px;color:var(--text-muted);"></i>
+            <span style="font-size:11px; color:var(--text-muted);">경기도 군포시 한정</span>
+          </div>
+          <div class="api-status-row">
+            <i data-lucide="clock" style="width:12px;height:12px;color:var(--text-muted);"></i>
+            <span style="font-size:11px; color:var(--text-muted);">실시간 · ${pollSeconds}초 자동 갱신</span>
+          </div>
         </div>
       </div>
     `;
 
-    // Wire events
-    // 1. Play / Pause
-    const pauseBtn = document.getElementById('sim-btn-pause');
-    if (pauseBtn) {
-      pauseBtn.addEventListener('click', () => {
-        transitEngine.setPaused(!isPaused);
-      });
-    }
-
-    // 2. Speed modifiers
-    const speedBtns = this.container.querySelectorAll('[data-speed]');
-    speedBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        transitEngine.setPaused(false);
-        transitEngine.setSpeed(e.target.dataset.speed);
-      });
+    // 수동 새로고침
+    document.getElementById('refresh-btn')?.addEventListener('click', () => {
+      transitEngine.refresh();
     });
 
-    // 3. Traffic Density modifiers
-    const trafficBtns = this.container.querySelectorAll('[data-traffic]');
-    trafficBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        transitEngine.setTraffic(e.target.dataset.traffic);
+    // 갱신 주기 변경
+    this.container.querySelectorAll('[data-poll]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const secs = parseInt(e.currentTarget.dataset.poll);
+        transitEngine.setPollInterval(secs);
       });
     });
-
-    // 4. Spawners
-    const spawnBtn = document.getElementById('spawn-backup-btn');
-    if (spawnBtn) {
-      spawnBtn.addEventListener('click', () => {
-        transitEngine.spawnBackupBus();
-      });
-    }
-
-    const breakdownBtn = document.getElementById('trigger-breakdown-btn');
-    if (breakdownBtn) {
-      breakdownBtn.addEventListener('click', () => {
-        transitEngine.triggerBreakdown();
-      });
-    }
 
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
   }

@@ -1,8 +1,6 @@
 /* ==========================================
-   LIVE METROBUS - ARRIVAL BOARD COMPONENT
-   Displays incoming buses, congestion metrics,
-   real-time ETAs, and interactive stop bells.
-   Provides 100% flicker-free reactive rendering.
+   군포시 실시간 버스 - 도착 정보 보드
+   GBIS API 실제 데이터 기반 렌더링
    ========================================== */
 
 import { transitEngine } from '../services/transitEngine.js';
@@ -12,12 +10,10 @@ export class ArrivalBoard {
     this.container = document.getElementById(containerId);
     this.activeStationId = activeStationId;
     this.onToggleFavoriteStation = onToggleFavoriteStation;
-
     this.setupEvents();
   }
 
   setupEvents() {
-    // Favorite button for the active station
     const favToggle = document.getElementById('station-fav-toggle');
     if (favToggle) {
       favToggle.addEventListener('click', () => {
@@ -32,36 +28,57 @@ export class ArrivalBoard {
     this.activeStationId = stationId;
   }
 
-  // Helper to translate congestion to Korean
+  // 혼잡도 한국어 변환
   getCongestionLabel(level) {
     switch (level) {
-      case 'empty': return '여유';
+      case 'empty':    return '여유';
       case 'moderate': return '보통';
-      case 'crowded': return '혼잡';
-      default: return '보통';
+      case 'crowded':  return '혼잡';
+      default:         return '보통';
     }
+  }
+
+  // ETA 표시 HTML 생성
+  buildEtaHtml(arrival) {
+    const mins = arrival.predictTime;
+
+    if (mins === 0) {
+      return `
+        <span class="bus-eta-time arriving-soon">곧 도착<span>진입</span></span>
+        <span class="bus-eta-stops">정류장 진입 중</span>
+      `;
+    }
+    if (mins === 1) {
+      return `
+        <span class="bus-eta-time arriving-soon">1<span>분</span></span>
+        <span class="bus-eta-stops">${arrival.locationNo}정거장 전</span>
+      `;
+    }
+    return `
+      <span class="bus-eta-time ${mins <= 3 ? 'arriving-soon' : ''}">${mins}<span>분</span></span>
+      <span class="bus-eta-stops">${arrival.locationNo}정거장 전</span>
+    `;
   }
 
   render(state) {
     if (!state) return;
-    const { stations, activeStationId, favorites, boardingRequests } = state;
+    const { stations, activeStationId, favorites, arrivals, isLoading, error, boardingRequests, apiKeySet } = state;
     this.setActiveStation(activeStationId);
 
+    // ── 헤더 업데이트 ───────────────────────────────────────
     const station = stations.find(s => s.id === activeStationId);
-    
-    // Update active station details in header
-    const nameEl = document.getElementById('active-station-name');
-    const idEl = document.getElementById('active-station-id');
+    const nameEl   = document.getElementById('active-station-name');
+    const idEl     = document.getElementById('active-station-id');
     const favToggle = document.getElementById('station-fav-toggle');
 
     if (station) {
       nameEl.textContent = station.name;
-      idEl.textContent = station.id;
+      idEl.textContent   = `ARS ${station.arsId || station.id}`;
       idEl.classList.remove('hidden');
       favToggle.classList.remove('hidden');
 
-      const isFav = favorites.includes(station.id);
-      const icon = favToggle.querySelector('.heart-icon') || favToggle.querySelector('svg') || favToggle.querySelector('i');
+      const isFav = (favorites || []).includes(station.id);
+      const icon  = favToggle.querySelector('.heart-icon') || favToggle.querySelector('svg') || favToggle.querySelector('i');
       if (isFav) {
         favToggle.classList.add('active');
         if (icon) icon.style.fill = 'currentColor';
@@ -73,262 +90,185 @@ export class ArrivalBoard {
       nameEl.textContent = '정류장을 선택하세요';
       idEl.classList.add('hidden');
       favToggle.classList.add('hidden');
+    }
+
+    // ── API 키 미설정 안내 ──────────────────────────────────
+    if (!apiKeySet) {
       this.container.innerHTML = `
-        <div class="no-arrivals">
-          <i data-lucide="info" style="width:40px; height:40px; margin-bottom:12px; color:var(--text-muted);"></i>
-          <p>왼쪽 목록에서 정류장을 선택하여<br>실시간 버스 진입 현황을 확인하세요.</p>
+        <div class="no-arrivals" style="gap:16px; padding: 40px 20px;">
+          <i data-lucide="key-round" style="width:48px; height:48px; color:var(--color-local);"></i>
+          <p style="font-size:14px; font-weight:600; color:var(--text-main);">API 키 설정이 필요합니다</p>
+          <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:16px 20px; text-align:left; font-size:12px; line-height:1.8; color:var(--text-secondary); max-width:320px;">
+            <strong style="color:var(--color-local);">설정 방법</strong><br>
+            1. <a href="https://www.data.go.kr" target="_blank" style="color:var(--color-trunk);">data.go.kr</a> 회원가입<br>
+            2. "경기도 버스도착정보조회서비스" 검색 후 활용 신청<br>
+            3. 발급된 키를 <code style="background:rgba(255,255,255,0.08); padding:1px 5px; border-radius:4px;">.env</code> 파일에 입력<br>
+            4. <code style="background:rgba(255,255,255,0.08); padding:1px 5px; border-radius:4px;">node server.js</code> 재시작
+          </div>
         </div>
       `;
       if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
       return;
     }
 
-    // Fetch live arrival data from simulation engine
-    const arrivals = transitEngine.getArrivalsForStation(activeStationId);
-
-    if (arrivals.length === 0) {
+    // ── 정류장 미선택 ───────────────────────────────────────
+    if (!activeStationId) {
       this.container.innerHTML = `
         <div class="no-arrivals">
-          <i data-lucide="bus-front" style="width:40px; height:40px; margin-bottom:12px; color:var(--text-muted);"></i>
-          <p>현재 운행 중인 버스가 노선 상에 없습니다.<br>오른쪽 제어반에서 차량을 수동으로 추가해보세요.</p>
+          <i data-lucide="map-pin" style="width:40px; height:40px; color:var(--text-muted);"></i>
+          <p>왼쪽 목록에서 정류장을 선택하여<br>실시간 버스 도착 정보를 확인하세요.</p>
         </div>
       `;
       if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
       return;
     }
 
-    // Identify if structural change happened (spawns/departs, station switch)
-    const arrivalsListId = arrivals.map(a => a.bus.id).join(',');
-    if (
-      this.lastActiveStationId !== activeStationId || 
-      this.lastArrivalsListId !== arrivalsListId || 
+    // ── 로딩 상태 ──────────────────────────────────────────
+    if (isLoading && (!arrivals || arrivals.length === 0)) {
+      this.container.innerHTML = `
+        <div class="no-arrivals">
+          <div class="loading-spinner"></div>
+          <p style="margin-top:12px;">실시간 버스 정보를 불러오는 중...</p>
+        </div>
+      `;
+      return;
+    }
+
+    // ── 오류 상태 ──────────────────────────────────────────
+    if (error && (!arrivals || arrivals.length === 0)) {
+      this.container.innerHTML = `
+        <div class="no-arrivals">
+          <i data-lucide="wifi-off" style="width:40px; height:40px; color:var(--color-express);"></i>
+          <p style="color:var(--color-express); font-weight:600;">데이터 조회 오류</p>
+          <p style="font-size:11px; color:var(--text-muted);">${error}</p>
+          <button onclick="window.transitEngine.refresh()" style="margin-top:8px; padding:8px 16px; border-radius:10px; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3); color:var(--color-trunk); cursor:pointer; font-size:12px;">
+            다시 시도
+          </button>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      return;
+    }
+
+    // ── 도착 정보 없음 ──────────────────────────────────────
+    if (!arrivals || arrivals.length === 0) {
+      this.container.innerHTML = `
+        <div class="no-arrivals">
+          <i data-lucide="bus-front" style="width:40px; height:40px; color:var(--text-muted);"></i>
+          <p>현재 도착 예정 버스가 없습니다.<br>운행 시간을 확인해주세요.</p>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      return;
+    }
+
+    // ── 도착 카드 렌더링 ────────────────────────────────────
+    // 구조 변경 감지 (정류장 전환 or 노선 수 변화)
+    const arrivalKey = arrivals.map(a => `${a.routeId}-${a.busOrder}`).join(',');
+    const forceRedraw =
+      this.lastActiveStationId !== activeStationId ||
+      this.lastArrivalKey !== arrivalKey ||
       this.container.querySelector('.no-arrivals') ||
-      this.container.children.length === 0
-    ) {
+      this.container.children.length === 0;
+
+    if (forceRedraw) {
       this.lastActiveStationId = activeStationId;
-      this.lastArrivalsListId = arrivalsListId;
-      
-      // Structural rendering
-      this.drawFullCards(arrivals, boardingRequests, activeStationId);
+      this.lastArrivalKey = arrivalKey;
+      this._drawFullCards(arrivals, boardingRequests, activeStationId);
       return;
     }
 
-    // Flicker-Free Precision Value Updates: Only modify the text values within existing DOM elements!
+    // ── 플리커 없는 부분 업데이트 ──────────────────────────
     arrivals.forEach(arrival => {
-      const { bus, route, stopsAway, etaSeconds, isAtStation, isBoardingActive } = arrival;
-      const card = this.container.querySelector(`[data-bus-id="${bus.id}"]`);
+      const cardId = `${arrival.routeId}-${arrival.busOrder}`;
+      const card = this.container.querySelector(`[data-arrival-id="${cardId}"]`);
       if (!card) return;
 
-      const requestKey = `${activeStationId}:${route.id}`;
-      const isReserved = boardingRequests.includes(requestKey);
+      const reqKey    = `${activeStationId}:${arrival.routeId}`;
+      const isReserved = (boardingRequests || []).includes(reqKey);
 
-      // 1. Update card glowing border
-      if (isReserved) {
-        card.classList.add('bell-active');
-      } else {
-        card.classList.remove('bell-active');
-      }
+      if (isReserved) card.classList.add('bell-active');
+      else            card.classList.remove('bell-active');
 
-      // 2. Update ETA Group text and classes
       const etaGroup = card.querySelector('.bus-eta-group');
       if (etaGroup) {
-        let etaHTML = '';
-        if (isBoardingActive) {
-          etaHTML = `<span class="bus-eta-time arriving-soon" style="color:var(--color-bell);">탑승 중<span>🚶‍♂️</span></span>
-                     <span class="bus-eta-stops">예약 승객 승차 중</span>`;
-        } else if (isAtStation) {
-          etaHTML = `<span class="bus-eta-time arriving-soon">곧 도착<span>진입</span></span>
-                     <span class="bus-eta-stops">정류장 정차 중</span>`;
-        } else {
-          const mins = Math.floor(etaSeconds / 60);
-          const secs = etaSeconds % 60;
-          const etaClass = mins < 2 ? 'arriving-soon' : '';
-          const timeStr = mins > 0 
-            ? `${mins}<span>분</span> ${secs}<span>초</span>` 
-            : `${secs}<span>초</span>`;
-
-          etaHTML = `<span class="bus-eta-time ${etaClass}">${timeStr}</span>
-                     <span class="bus-eta-stops">${stopsAway}정거장 전</span>`;
-        }
-
-        // Avoid minor blinking by only changing DOM when text differs
-        if (etaGroup.innerHTML !== etaHTML) {
-          etaGroup.innerHTML = etaHTML;
-        }
-      }
-
-      // 3. Update congestion badge class & text
-      const congestionTag = card.querySelector('.tag-congestion');
-      if (congestionTag) {
-        const expectedClass = `tag tag-congestion ${bus.congestion}`;
-        if (congestionTag.className !== expectedClass) {
-          congestionTag.className = expectedClass;
-        }
-        const expectedText = `${this.getCongestionLabel(bus.congestion)} (${bus.seatsRemaining}석)`;
-        if (congestionTag.textContent !== expectedText) {
-          congestionTag.textContent = expectedText;
-        }
-      }
-
-      // 4. Update Boarding Bell button state
-      const bellBtnGroup = card.querySelector('.bell-btn-group');
-      if (bellBtnGroup) {
-        let buttonHTML = '';
-        if (isBoardingActive) {
-          buttonHTML = `
-            <button class="bell-request-btn active" style="background:var(--color-empty); border-color:var(--color-empty); pointer-events:none;">
-              <i data-lucide="check"></i> 탑승 완료
-            </button>
-          `;
-        } else if (isReserved) {
-          buttonHTML = `
-            <button class="bell-request-btn active" data-route-id="${route.id}">
-              <i data-lucide="bell-ring"></i> 예약 취소 🔔
-            </button>
-          `;
-        } else {
-          buttonHTML = `
-            <button class="bell-request-btn" data-route-id="${route.id}">
-              <i data-lucide="bell"></i> 승차 예약
-            </button>
-          `;
-        }
-
-        // Prevent button flicker by only updating DOM if button state changed
-        const currentCleanHtml = bellBtnGroup.innerHTML.replace(/\s+/g, ' ').trim();
-        const expectedCleanHtml = buttonHTML.replace(/\s+/g, ' ').trim();
-        
-        // If state is structurally changing, redraw button and re-bind event
-        if (bellBtnGroup.dataset.lastState !== isReserved + '-' + isBoardingActive) {
-          bellBtnGroup.dataset.lastState = isReserved + '-' + isBoardingActive;
-          bellBtnGroup.innerHTML = buttonHTML;
-          
-          if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
-          
-          const bellBtn = bellBtnGroup.querySelector('.bell-request-btn');
-          if (bellBtn && !isBoardingActive) {
-            bellBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              transitEngine.toggleBoardingRequest(activeStationId, route.id);
-            });
-          }
+        const newHtml = this.buildEtaHtml(arrival);
+        if (etaGroup.innerHTML.replace(/\s+/g, '') !== newHtml.replace(/\s+/g, '')) {
+          etaGroup.innerHTML = newHtml;
         }
       }
     });
   }
 
-  // Structural rendering of all arrival cards
-  drawFullCards(arrivals, boardingRequests, activeStationId) {
+  _drawFullCards(arrivals, boardingRequests, activeStationId) {
     this.container.innerHTML = '';
-    
+
     arrivals.forEach(arrival => {
-      const { bus, route, stopsAway, etaSeconds, isAtStation, isBoardingActive } = arrival;
-      
-      const requestKey = `${activeStationId}:${route.id}`;
-      const isReserved = boardingRequests.includes(requestKey);
+      const reqKey    = `${activeStationId}:${arrival.routeId}`;
+      const isReserved = (boardingRequests || []).includes(reqKey);
 
       const card = document.createElement('div');
       card.className = `arrival-card ${isReserved ? 'bell-active' : ''}`;
-      card.dataset.busId = bus.id;
-      card.style.setProperty('--line-color', route.color);
-      
-      const routeTypeSoftColor = route.color + '18';
-      card.style.setProperty('--line-color-soft', routeTypeSoftColor);
+      card.dataset.arrivalId = `${arrival.routeId}-${arrival.busOrder}`;
+      card.style.setProperty('--line-color', arrival.color);
+      card.style.setProperty('--line-color-soft', arrival.color + '22');
 
-      let busTypeLabel = '일반 버스';
-      if (route.type === 'express') busTypeLabel = '광역 급행';
-      if (route.type === 'trunk') busTypeLabel = '도심 간선';
-      if (route.type === 'branch') busTypeLabel = '지선 순환';
-      if (route.type === 'local') busTypeLabel = '순환 마을';
-
-      let etaHTML = '';
-      if (isBoardingActive) {
-        etaHTML = `<span class="bus-eta-time arriving-soon" style="color:var(--color-bell);">탑승 중<span>🚶‍♂️</span></span>
-                   <span class="bus-eta-stops">예약 승객 승차 중</span>`;
-      } else if (isAtStation) {
-        etaHTML = `<span class="bus-eta-time arriving-soon">곧 도착<span>진입</span></span>
-                   <span class="bus-eta-stops">정류장 정차 중</span>`;
-      } else {
-        const mins = Math.floor(etaSeconds / 60);
-        const secs = etaSeconds % 60;
-        const etaClass = mins < 2 ? 'arriving-soon' : '';
-        const timeStr = mins > 0 
-          ? `${mins}<span>분</span> ${secs}<span>초</span>` 
-          : `${secs}<span>초</span>`;
-
-        etaHTML = `<span class="bus-eta-time ${etaClass}">${timeStr}</span>
-                   <span class="bus-eta-stops">${stopsAway}정거장 전</span>`;
-      }
-
-      const wheelchairHTML = bus.isLowFloor 
-        ? `<span class="tag tag-accessibility" title="휠체어 탑승 가능 저상 버스">
-             <i data-lucide="accessibility" style="width:11px; height:11px;"></i>저상
-           </span>` 
-        : '';
-
-      const delayHTML = bus.isDelayed 
-        ? `<span class="tag tag-congestion crowded" style="animation: pulse-glow-red 1s infinite;">
-             <i data-lucide="alert-circle" style="width:11px; height:11px;"></i>지연 중
+      const wheelchairHtml = arrival.isLowFloor
+        ? `<span class="tag tag-accessibility" title="저상버스">
+             <i data-lucide="accessibility" style="width:11px;height:11px;"></i>저상
            </span>`
         : '';
 
-      let buttonHTML = '';
-      if (isBoardingActive) {
-        buttonHTML = `
-          <button class="bell-request-btn active" style="background:var(--color-empty); border-color:var(--color-empty); pointer-events:none;">
-            <i data-lucide="check"></i> 탑승 완료
-          </button>
-        `;
-      } else if (isReserved) {
-        buttonHTML = `
-          <button class="bell-request-btn active" data-route-id="${route.id}">
-            <i data-lucide="bell-ring"></i> 예약 취소 🔔
-          </button>
-        `;
-      } else {
-        buttonHTML = `
-          <button class="bell-request-btn" data-route-id="${route.id}">
-            <i data-lucide="bell"></i> 승차 예약
-          </button>
-        `;
-      }
+      const congestionLabel = this.getCongestionLabel(arrival.congestion);
+
+      const bellHtml = isReserved
+        ? `<button class="bell-request-btn active" data-route-id="${arrival.routeId}">
+             <i data-lucide="bell-ring"></i> 예약 취소 🔔
+           </button>`
+        : `<button class="bell-request-btn" data-route-id="${arrival.routeId}">
+             <i data-lucide="bell"></i> 승차 예약
+           </button>`;
+
+      // 차량번호 마스킹 (경기 XX바 1234 → 경기 **바 1234)
+      const plateDisplay = arrival.plateNo
+        ? arrival.plateNo
+        : '번호 미제공';
 
       card.innerHTML = `
-        <!-- Route Badge -->
+        <!-- 노선 번호 배지 -->
         <div class="bus-badge-container">
-          <div class="bus-badge ${route.type}">${route.number}</div>
-          <div class="bus-type-lbl">${busTypeLabel}</div>
+          <div class="bus-badge ${arrival.type}">${arrival.routeName}</div>
+          <div class="bus-type-lbl">${arrival.typeLabel}</div>
+          ${arrival.busOrder === 2 ? '<div class="bus-type-lbl" style="color:var(--text-muted);">다음 버스</div>' : ''}
         </div>
 
-        <!-- Details & Tags -->
+        <!-- 노선 상세 -->
         <div class="bus-route-details">
-          <div class="bus-destination">${route.name}</div>
+          <div class="bus-destination">${arrival.routeName}번</div>
           <div class="bus-meta-tags">
-            <span class="tag tag-plate">${bus.plateNumber}</span>
-            ${wheelchairHTML}
-            <span class="tag tag-congestion ${bus.congestion}">
-              ${this.getCongestionLabel(bus.congestion)} (${bus.seatsRemaining}석)
-            </span>
-            ${delayHTML}
+            <span class="tag tag-plate">${plateDisplay}</span>
+            ${wheelchairHtml}
+            <span class="tag tag-congestion ${arrival.congestion}">${congestionLabel}</span>
           </div>
         </div>
 
-        <!-- ETA Timer -->
+        <!-- ETA -->
         <div class="bus-eta-group">
-          ${etaHTML}
+          ${this.buildEtaHtml(arrival)}
         </div>
 
-        <!-- Reservation Bell Button -->
-        <div class="bell-btn-group" data-last-state="${isReserved}-${isBoardingActive}">
-          ${buttonHTML}
+        <!-- 승차 예약 버튼 -->
+        <div class="bell-btn-group" data-last-state="${isReserved}">
+          ${bellHtml}
         </div>
       `;
 
+      // 승차 예약 버튼 이벤트
       const bellBtn = card.querySelector('.bell-request-btn');
-      if (bellBtn && !isBoardingActive) {
-        bellBtn.addEventListener('click', (e) => {
+      if (bellBtn) {
+        bellBtn.addEventListener('click', e => {
           e.stopPropagation();
-          transitEngine.toggleBoardingRequest(activeStationId, route.id);
+          transitEngine.toggleBoardingRequest(activeStationId, arrival.routeId);
         });
       }
 

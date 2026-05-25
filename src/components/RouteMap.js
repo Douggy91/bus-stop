@@ -1,112 +1,131 @@
 /* ==========================================
-   LIVE METROBUS - INTERACTIVE SVG ROUTE MAP
-   Plots static station hubs, connects transit pathways,
-   and visualizes real-time moving vehicles with
-   dynamic boarding indicators.
+   군포시 실시간 버스 - 노선도 SVG 맵
+   군포시 실제 정류장 좌표 기반 정적 맵
+   도착 정보의 노선 색상을 반영한 동적 강조
    ========================================== */
 
-import { STATIONS, ROUTES } from '../services/transitData.js';
-import { transitEngine } from '../services/transitEngine.js';
+import { STATIONS, ROUTE_TYPE_MAP } from '../services/transitData.js';
+
+// 군포시 내 주요 노선 연결 경로 (시각화용, 정류장 좌표 기반)
+const VISUAL_ROUTES = [
+  {
+    id: 'line-4',
+    label: '4호선 환승 라인',
+    color: '#3b82f6',
+    stationIds: ['26378', '26379', '26046', '26054', '26055', '26049'],
+  },
+  {
+    id: 'line-1',
+    label: '1호선 환승 라인',
+    color: '#10b981',
+    stationIds: ['26084', '26085', '26170', '26179', '26182'],
+  },
+  {
+    id: 'line-garage',
+    label: '공영차고지 라인',
+    color: '#f59e0b',
+    stationIds: ['26170', '26216', '26173', '26172'],
+  },
+];
 
 export class RouteMap {
   constructor(containerId, activeStationId, onSelectStation) {
-    this.container = document.getElementById(containerId);
+    this.container       = document.getElementById(containerId);
     this.activeStationId = activeStationId;
     this.onSelectStation = onSelectStation;
+    this.svgBuilt        = false;
   }
 
   setActiveStation(stationId) {
     this.activeStationId = stationId;
   }
 
-  // Draw background grid pattern for high tech aesthetics
   renderGridPattern() {
     return `
       <defs>
         <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
           <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.015)" stroke-width="1"/>
         </pattern>
-        <filter id="glow-heavy" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="6" result="blur"/>
+        <filter id="glow-filter">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
           <feComposite in="SourceGraphic" in2="blur" operator="over"/>
         </filter>
       </defs>
-      <rect width="100%" height="100%" fill="url(#grid)" />
+      <rect width="100%" height="100%" fill="url(#grid)"/>
     `;
   }
 
-  // Draw Route paths (connecting stations chronologically)
-  renderRouteLines(activeRoutes) {
+  // 도착 정보의 노선 색상으로 활성 경로 강조
+  renderRouteLines(arrivals) {
     let html = '';
-    
-    ROUTES.forEach(route => {
-      const isRouteActive = activeRoutes.some(ar => ar.id === route.id);
-      const stationsOnRoute = route.stations.map(id => STATIONS.find(s => s.id === id));
-      
-      if (stationsOnRoute.length < 2) return;
 
-      // Draw path sequence
-      let pathData = `M ${stationsOnRoute[0].x} ${stationsOnRoute[0].y}`;
-      for (let i = 1; i < stationsOnRoute.length; i++) {
-        const from = stationsOnRoute[i - 1];
-        const to = stationsOnRoute[i];
-        
-        // Calculate curve/smooth offset to make routes look premium, not just boring straight lines
-        // A subtle quadratic/bezier offset if route is blue, red etc. to keep them from perfectly overlapping!
-        let cx = (from.x + to.x) / 2;
-        let cy = (from.y + to.y) / 2;
+    // 현재 도착 노선의 색상 수집
+    const activeRouteColors = new Map();
+    (arrivals || []).forEach(a => {
+      if (!activeRouteColors.has(a.type)) {
+        activeRouteColors.set(a.routeId, a.color);
+      }
+    });
 
-        if (route.type === 'express') cy -= 15; // Arc Red express routes slightly up
-        if (route.type === 'branch') cy += 15;  // Arc Green branch routes slightly down
-        if (route.type === 'local') cx += 15;   // Arc Yellow routes right
+    VISUAL_ROUTES.forEach(route => {
+      const routeStations = route.stationIds
+        .map(id => STATIONS.find(s => s.id === id))
+        .filter(Boolean);
 
+      if (routeStations.length < 2) return;
+
+      let pathData = `M ${routeStations[0].x} ${routeStations[0].y}`;
+      for (let i = 1; i < routeStations.length; i++) {
+        const from = routeStations[i - 1];
+        const to   = routeStations[i];
+        const cx   = (from.x + to.x) / 2;
+        const cy   = (from.y + to.y) / 2 - 10;
         pathData += ` Q ${cx} ${cy}, ${to.x} ${to.y}`;
       }
 
-      // Loop back path to create continuous visual flow
-      const from = stationsOnRoute[stationsOnRoute.length - 1];
-      const to = stationsOnRoute[0];
-      let cx = (from.x + to.x) / 2;
-      let cy = (from.y + to.y) / 2;
-      if (route.type === 'express') cy -= 15;
-      if (route.type === 'branch') cy += 15;
-      if (route.type === 'local') cx += 15;
-      pathData += ` Q ${cx} ${cy}, ${to.x} ${to.y}`;
-
       html += `
-        <path d="${pathData}" 
-              class="map-route-path ${route.type} ${isRouteActive ? 'highlighted' : ''}" 
-              style="--line-color: ${route.color}" 
-              id="path-${route.id}" />
+        <path d="${pathData}"
+              class="map-route-path"
+              style="stroke:${route.color}; opacity:0.35; stroke-width:4;"
+              id="path-${route.id}"/>
       `;
     });
 
     return html;
   }
 
-  // Draw station node dots
-  renderStationNodes(favorites, boardingRequests) {
+  renderStationNodes(arrivals, boardingRequests) {
     let html = '';
 
+    // 현재 도착 정보가 있는 정류장 파악
+    const hasArrivals = arrivals && arrivals.length > 0;
+
     STATIONS.forEach(station => {
-      const isActive = station.id === this.activeStationId;
-      
-      // Check if there is an active boarding bell for any route AT this station
-      const hasActiveBell = boardingRequests.some(req => req.startsWith(station.id));
+      const isActive    = station.id === this.activeStationId;
+      const hasBell     = (boardingRequests || []).some(r => r.startsWith(station.id));
+      const radius      = isActive ? 9 : 6;
 
       html += `
-        <g class="station-node-group">
-          <!-- Glow circle for boarding bell -->
-          ${hasActiveBell ? `<circle cx="${station.x}" cy="${station.y}" r="12" fill="none" stroke="var(--color-bell)" stroke-width="2" class="map-station-node-bell-pulse" style="animation: marker-ring-pulse 1.2s infinite; pointer-events:none;" />` : ''}
-          
-          <circle cx="${station.x}" cy="${station.y}" r="${isActive ? '8.5' : '6'}" 
-                  class="map-station-node ${isActive ? 'active-station' : ''} ${hasActiveBell ? 'boarding-bell-active' : ''}" 
-                  data-id="${station.id}" />
-                  
-          <text x="${station.x}" y="${station.y - (isActive ? 16 : 12)}" 
-                text-anchor="middle" 
+        <g class="station-node-group" style="cursor:pointer;" data-id="${station.id}">
+          ${hasBell ? `
+            <circle cx="${station.x}" cy="${station.y}" r="14" fill="none"
+                    stroke="var(--color-bell)" stroke-width="1.5"
+                    style="animation:marker-ring-pulse 1.2s infinite; pointer-events:none;"/>
+          ` : ''}
+          ${isActive ? `
+            <circle cx="${station.x}" cy="${station.y}" r="14" fill="none"
+                    stroke="var(--color-trunk)" stroke-width="1" opacity="0.3"
+                    style="pointer-events:none;"/>
+          ` : ''}
+
+          <circle cx="${station.x}" cy="${station.y}" r="${radius}"
+                  class="map-station-node ${isActive ? 'active-station' : ''} ${hasBell ? 'boarding-bell-active' : ''}"
+                  data-id="${station.id}"/>
+
+          <text x="${station.x}" y="${station.y - (isActive ? 16 : 12)}"
+                text-anchor="middle"
                 class="map-station-label ${isActive ? 'active-station-label' : ''}">
-            ${station.name.split(' ')[0]} ${hasActiveBell ? '🔔' : ''}
+            ${station.name.split('(')[0].trim()} ${hasBell ? '🔔' : ''}
           </text>
         </g>
       `;
@@ -115,132 +134,80 @@ export class RouteMap {
     return html;
   }
 
-  // Draw active moving buses
-  renderBuses(buses, boardingRequests) {
-    let html = '';
+  // 도착 정보 있는 정류장에 버스 수 뱃지 표시
+  renderArrivalBadges(arrivals) {
+    if (!arrivals || arrivals.length === 0 || !this.activeStationId) return '';
+    const station = STATIONS.find(s => s.id === this.activeStationId);
+    if (!station) return '';
 
-    buses.forEach(bus => {
-      const coords = transitEngine.getBusCoordinates(bus);
-      
-      // Determine if this specific bus is approaching a station where it has an active boarding reservation
-      const nextStationIndex = (bus.currentStationIndex + 1) % buses.length; // Approximate
-      const route = ROUTES.find(r => r.id === bus.routeId);
-      let isBellActiveForBus = false;
-
-      if (route) {
-        const nextStationId = route.stations[(bus.currentStationIndex + 1) % route.stations.length];
-        const requestKey = `${nextStationId}:${bus.routeId}`;
-        isBellActiveForBus = boardingRequests.includes(requestKey);
-      }
-
-      const isStopped = bus.dwellTimeRemaining > 0;
-      
-      // Animate bus position smoothly
-      html += `
-        <g class="map-bus-group" data-bus-id="${bus.id}" transform="translate(${coords.x}, ${coords.y})">
-          <!-- Glowing Pulsing Ring if passenger boarding request is active -->
-          <circle cx="0" cy="0" r="14" class="map-bus-glow-ring" />
-          
-          <!-- Outer border -->
-          <circle cx="0" cy="0" r="10" 
-                  class="map-bus-marker ${bus.type} ${isBellActiveForBus ? 'bell-active' : ''}" 
-                  title="${bus.busNumber}번 (${bus.plateNumber})"/>
-          
-          <!-- Bus Text label -->
-          <text x="0" y="3" class="map-bus-label">${bus.busNumber}</text>
-
-          <!-- Dwell Time Loading Ring -->
-          ${isStopped && !bus.isDelayed ? `
-            <circle cx="0" cy="0" r="12" fill="none" stroke="var(--color-empty)" stroke-width="2" 
-                    stroke-dasharray="75.3" stroke-dashoffset="${75.3 * (1 - bus.dwellTimeRemaining / bus.dwellTimeTotal)}" 
-                    transform="rotate(-90)" style="transition: stroke-dashoffset 0.1s linear; pointer-events:none;"/>
-          ` : ''}
-
-          <!-- Emergency Warning Flag -->
-          ${bus.isDelayed ? `
-            <g transform="translate(8, -8)" style="pointer-events:none;">
-              <circle cx="0" cy="0" r="6" fill="var(--color-express)" />
-              <text x="0" y="2" fill="#fff" font-size="7" font-weight="900" text-anchor="middle">!</text>
-            </g>
-          ` : ''}
-        </g>
-      `;
-    });
-
-    return html;
+    return `
+      <g transform="translate(${station.x + 12}, ${station.y - 18})">
+        <rect x="-10" y="-9" width="22" height="16" rx="5"
+              fill="var(--color-trunk)" opacity="0.9"/>
+        <text x="1" y="2" fill="#fff" font-size="9" font-weight="800"
+              text-anchor="middle" font-family="Outfit, sans-serif">
+          ${arrivals.length}대
+        </text>
+      </g>
+    `;
   }
 
   render(state) {
     if (!state) return;
-    const { buses, activeStationId, favorites, boardingRequests } = state;
-    
-    const boardingBellsStr = (boardingRequests || []).join(',');
-    const favoritesStr = (favorites || []).join(',');
+    const { activeStationId, favorites, boardingRequests, arrivals } = state;
 
-    // Identify active routes crossing active station
-    const activeRoutes = activeStationId 
-      ? ROUTES.filter(route => route.stations.includes(activeStationId))
-      : [];
+    this.setActiveStation(activeStationId);
 
-    // If SVG frame is not built or active station changed, rebuild static layers
-    if (this.lastActiveStationId !== activeStationId || !this.svgBuilt || !this.container.querySelector('svg')) {
-      this.lastActiveStationId = activeStationId;
+    const bellsStr = (boardingRequests || []).join(',');
+
+    // SVG 기반 구조가 없으면 초기 구축
+    if (!this.svgBuilt || !this.container.querySelector('svg')) {
       this.svgBuilt = true;
 
       this.container.innerHTML = `
-        <svg class="svg-map-element" viewBox="0 0 1000 400" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-          <!-- Background Grid Layer -->
-          <g id="map-grid-layer">
-            ${this.renderGridPattern()}
-          </g>
-
-          <!-- Route Paths Layer -->
-          <g id="map-paths-layer">
-            ${this.renderRouteLines(activeRoutes)}
-          </g>
-
-          <!-- Buses Layer -->
-          <g id="map-buses-layer"></g>
-
-          <!-- Station Hubs Layer -->
+        <svg class="svg-map-element" viewBox="0 0 960 380"
+             width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+          <g id="map-grid-layer">${this.renderGridPattern()}</g>
+          <g id="map-paths-layer"></g>
           <g id="map-stations-layer"></g>
+          <g id="map-badges-layer"></g>
         </svg>
       `;
 
-      // Cache layer references
-      this.busesLayer = this.container.querySelector('#map-buses-layer');
+      this.pathsLayer    = this.container.querySelector('#map-paths-layer');
       this.stationsLayer = this.container.querySelector('#map-stations-layer');
-    }
+      this.badgesLayer   = this.container.querySelector('#map-badges-layer');
 
-    // 1. Redraw Station nodes (only when favorites, active station focus, or reservations change)
-    if (
-      this.lastStationsRenderedActiveId !== activeStationId ||
-      this.lastStationsRenderedBells !== boardingBellsStr ||
-      this.lastStationsRenderedFavs !== favoritesStr ||
-      !this.stationsLayer ||
-      !this.stationsLayer.innerHTML
-    ) {
-      this.lastStationsRenderedActiveId = activeStationId;
-      this.lastStationsRenderedBells = boardingBellsStr;
-      this.lastStationsRenderedFavs = favoritesStr;
-      
-      if (this.stationsLayer) {
-        this.stationsLayer.innerHTML = this.renderStationNodes(favorites, boardingRequests);
-
-        // Re-bind click listeners on station node elements
-        const stationNodes = this.container.querySelectorAll('.map-station-node');
-        stationNodes.forEach(node => {
-          node.addEventListener('click', (e) => {
-            const stationId = e.target.dataset.id;
-            this.onSelectStation(stationId);
-          });
-        });
+      // 노선 경로는 정적 (한 번만 그림)
+      if (this.pathsLayer) {
+        this.pathsLayer.innerHTML = this.renderRouteLines(arrivals);
       }
     }
 
-    // 2. Redraw live moving buses (always redraw every 100ms to update progress coords)
-    if (this.busesLayer) {
-      this.busesLayer.innerHTML = this.renderBuses(buses, boardingRequests);
+    // 정류장 노드: 활성 정류장 / 벨 예약 변화 시 갱신
+    if (
+      this.lastActiveId !== activeStationId ||
+      this.lastBells    !== bellsStr        ||
+      !this.stationsLayer?.innerHTML
+    ) {
+      this.lastActiveId = activeStationId;
+      this.lastBells    = bellsStr;
+
+      if (this.stationsLayer) {
+        this.stationsLayer.innerHTML = this.renderStationNodes(arrivals, boardingRequests);
+
+        // 정류장 클릭 이벤트 바인딩
+        this.container.querySelectorAll('.station-node-group').forEach(g => {
+          g.addEventListener('click', e => {
+            const id = g.dataset.id || e.currentTarget.dataset.id;
+            if (id) this.onSelectStation(id);
+          });
+        });
+      }
+
+      if (this.badgesLayer) {
+        this.badgesLayer.innerHTML = this.renderArrivalBadges(arrivals);
+      }
     }
   }
 }
